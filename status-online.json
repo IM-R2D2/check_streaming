@@ -1,0 +1,84 @@
+{
+  "last_update": "2024-01-15 14:30:25",
+  "server": {п    "host": "live1.reklamov.com",
+    "port": 443,
+    "protocol": "https",
+    "url": "https://live1.reklamov.com"
+  },
+  "streams": [
+    {
+      "mount_point": "/EUROPA-888FM",
+      "name": "Европа+",
+      "status": "online",
+      "listeners": 0,
+      "stream_started": "Sat, 13 Sep 2025 00:46:22 +0300",
+      "currently_playing": "ONE T FEAT.YWY & NIKA - THE WAY TO LOVE",
+      "bitrate": "192",
+      "server_description": "№1 в России",
+      "genre": "CHR",
+      "last_check": "2024-01-15 14:30:25"
+    },
+    {
+      "mount_point": "/NASHE-892FM",
+      "name": "Наше Радио",
+      "status": "online",
+      "listeners": 1,
+      "stream_started": "Sat, 13 Sep 2025 00:46:55 +0300",
+      "currently_playing": "Nashe Radio 89.2 - Achinsk",
+      "bitrate": "192",
+      "server_description": "Музыка поколений",
+      "genre": "RUSSIAN ROCK",
+      "last_check": "2024-01-15 14:30:25"
+    },
+    {
+      "mount_point": "/BACKUP-STREAM",
+      "name": "Резервный поток",
+      "status": "offline",
+      "listeners": 0,
+      "stream_started": "Unknown",
+      "currently_playing": "Unknown",
+      "bitrate": "Unknown",
+      "server_description": "Unknown",
+      "genre": "Unknown",
+      "last_check": "2024-01-15 14:30:25",
+      "error": "Mount point not found in statistics"
+    },
+    {
+      "mount_point": "/TEST-STREAM",
+      "name": "Тестовый поток",
+      "status": "online",
+      "listeners": 3,
+      "stream_started": "Mon, 15 Jan 2024 09:00:00 +0300",
+      "currently_playing": "Тестовая композиция",
+      "bitrate": "64",
+      "server_description": "Test Stream Server",
+      "genre": "Test",
+      "last_check": "2024-01-15 14:30:25"
+    },
+    {
+      "mount_point": "/CLASSICAL",
+      "name": "Классическая музыка",
+      "status": "online",
+      "listeners": 12,
+      "stream_started": "Sun, 14 Jan 2024 20:30:15 +0300",
+      "currently_playing": "Бетховен - Симфония №9",
+      "bitrate": "192",
+      "server_description": "Classical Music Server",
+      "genre": "Classical",
+      "last_check": "2024-01-15 14:30:25"
+    },
+    {
+      "mount_point": "/JAZZ-STREAM",
+      "name": "Джаз радио",
+      "status": "offline",
+      "listeners": 0,
+      "stream_started": "Unknown",
+      "currently_playing": "Unknown",
+      "bitrate": "Unknown",
+      "server_description": "Unknown",
+      "genre": "Unknown",
+      "last_check": "2024-01-15 14:30:25",
+      "error": "Connection error: Connection refused"
+    }
+  ]
+}

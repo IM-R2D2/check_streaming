@@ -1,0 +1,70 @@
+{
+  "icecast": {
+    "id": "radio_custom",
+    "type": "custom",
+    "host": "radio3.example.com",
+    "port": 443,
+    "timeout": 15,
+    "check_interval": 60,
+    "use_https": true,
+    "user_agent": "IcecastChecker/1.0",
+    "endpoint": "/custom/stats",
+    "endpoint_only": true,
+    "auth": {
+      "username": "RADIO3_ADMIN_USERNAME",
+      "password": "RADIO3_ADMIN_PASSWORD",
+      "enabled": true
+    },
+    "streams": [
+      {
+        "mount_point": "/free",
+        "name": "Free Stream",
+        "enabled": true
+      },
+      {
+        "mount_point": "/free2",
+        "name": "Free2 Stream",
+        "enabled": true
+      }
+    ]
+  },
+  "telegram": {
+    "bot_token": "RADIO3_TELEGRAM_BOT_TOKEN",
+    "chat_id": "RADIO3_TELEGRAM_CHAT_ID",
+    "enabled": true
+  },
+  "email": {
+    "enabled": false,
+    "smtp_host": "smtp.yourmail.com",
+    "smtp_port": 587,
+    "use_tls": true,
+    "username": "your_smtp_login",
+    "password": "your_smtp_password",
+    "from_addr": "monitor@yourdomain.com",
+    "to_addr": "alerts@yourdomain.com",
+    "subject_prefix": "[IcecastChecker]"
+  },
+  "logging": {
+    "log_file": "/var/log/scripts/check_streaming/{YYYY}-{MM}-{DD}-radio3_custom.log",
+    "log_level": "DEBUG",
+    "max_file_size": 10485760,
+    "backup_count": 5
+  },
+  "status_json": {
+    "enabled": true,
+    "file_path": "status-online.json",
+    "update_interval": 30
+  },
+  "notifications": {
+    "retry_attempts": 3,
+    "retry_delay": 30,
+    "cooldown_period": 300
+  },
+  "custom_example_stats_response": {
+    "/free": 2,
+    "/free2": 1,
+    "/freemp2": 8,
+    "/freemp3": 12
+  }
+}
+

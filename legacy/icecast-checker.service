@@ -1,0 +1,33 @@
+[Unit]
+Description=Icecast Stream Monitor
+Documentation=https://github.com/your-repo/icecast-checker
+After=network.target
+Wants=network.target
+
+[Service]
+Type=simple
+User=icecast
+Group=icecast
+WorkingDirectory=/usr/local/bin/icecast-checker
+ExecStart=/usr/local/bin/icecast-checker/venv/bin/python /usr/local/bin/icecast-checker/icecast_checker.py
+Restart=always
+RestartSec=10
+StandardOutput=null
+StandardError=null
+SyslogIdentifier=icecast-checker
+
+MemoryLimit=128M
+CPUQuota=50%
+
+Environment=PYTHONUNBUFFERED=1
+Environment=PYTHONPATH=/usr/local/bin/icecast-checker
+
+# NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/usr/local/bin/icecast-checker /var/log/scripts/check_streaming
+
+[Install]
+WantedBy=multi-user.target
+
