@@ -56,6 +56,7 @@ if [ ! -f "$CONFIG_FILE" ]; then
 fi
 
 # 4. Сборка и запуск контейнера
+# Образ тегируется как icecast-checker:latest. Без --build будет использован уже собранный образ.
 echo "Собираем и запускаем контейнер через $COMPOSE_CMD..."
 $COMPOSE_CMD up -d --build
 

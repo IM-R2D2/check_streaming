@@ -1,5 +1,8 @@
+# Один образ для всех серверов: при сборке тег icecast-checker:latest.
+# На каждом сервере — свой config.json и тома (логи, status-online.json).
 services:
   icecast-checker:
+    image: icecast-checker:latest
     build: .
     container_name: icecast-checker
     restart: always
