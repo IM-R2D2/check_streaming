@@ -272,7 +272,7 @@ pip install -r requirements.txt
 
 ### Рекомендуемый способ: Docker
 
-1. Скопируйте `config_example.json` в `config.json` и заполните реальные значения.
+1. Скопируйте пример конфига в `config.json` и заполните реальные значения: для Icecast — `config_icecast_example.json`, для кастомных проверок — `config_custom_example.json`.
 2. Соберите и запустите контейнер:
 
 ```bash

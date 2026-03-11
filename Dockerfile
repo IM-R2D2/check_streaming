@@ -9,8 +9,8 @@ RUN pip install --no-cache-dir -r requirements.txt
 # Копируем скрипты и README
 COPY icecast_checker.py custom_checker.py global-checker.py README.md ./
 
-# Опционально: копия примера конфига (для удобства внутри контейнера)
-COPY config_example.json ./config_example.json
+# Опционально: копии примеров конфигов (для удобства внутри контейнера)
+COPY config_icecast_example.json config_custom_example.json ./
 
 # По умолчанию ожидаем, что реальный config.json проброшен томом
 # и лежит рядом с приложением в /app/config.json
