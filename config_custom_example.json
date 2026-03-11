@@ -8,11 +8,11 @@
     "check_interval": 60,
     "use_https": true,
     "user_agent": "IcecastChecker/1.0",
-    "endpoint": "/custom/stats",
+    "endpoint": "/custom_page",
     "endpoint_only": true,
     "auth": {
-      "username": "RADIO3_ADMIN_USERNAME",
-      "password": "RADIO3_ADMIN_PASSWORD",
+      "username": "",
+      "password": "",
       "enabled": true
     },
     "streams": [
