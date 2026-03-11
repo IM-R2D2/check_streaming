@@ -10,7 +10,11 @@ from icecast_checker import IcecastChecker
 
 
 class CustomChecker(IcecastChecker):
-    """Чекер для произвольного JSON-API (map mount -> listeners)."""
+    """Чекер для произвольного JSON-API (map mount -> listeners).
+
+    Логика уведомлений и работа с status-online.json наследуются от IcecastChecker:
+    уведомление о недоступности отправляется только при переходе в offline (смена статуса).
+    """
 
     def check_icecast_stream(self, stream_config):
         """

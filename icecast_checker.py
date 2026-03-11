@@ -400,14 +400,12 @@ class IcecastChecker:
             self.logger.error("Не настроены bot_token или chat_id для Telegram")
             return False
         
-        # Получаем конфигурацию уведомлений
+        current_time = time.time()
         notifications_config = self.config.get('notifications', {})
         
         # Проверяем период cooldown для конкретного потока (если не пропускаем)
         if not skip_cooldown:
             cooldown_period = notifications_config.get('cooldown_period', 300)
-            
-            current_time = time.time()
             if stream_key in self.last_notification_time:
                 if current_time - self.last_notification_time[stream_key] < cooldown_period:
                     self.logger.debug(f"Пропускаем уведомление для потока {stream_key} из-за cooldown периода ({cooldown_period} сек)")
@@ -586,6 +584,33 @@ class IcecastChecker:
         except Exception as e:
             self.logger.error(f"Ошибка записи статуса в JSON: {e}")
     
+    def _load_previous_status(self):
+        """Загружает последний сохранённый статус потоков из JSON.
+        Возвращает dict: stream_key -> 'online'|'offline'.
+        Используется для отправки уведомления только при переходе в offline (смена статуса).
+        Для работы нужна запись статуса: в конфиге должен быть включён status_json.enabled.
+        """
+        status_config = self.config.get('status_json', {})
+        file_path = status_config.get('file_path', 'status-online.json')
+        result = {}
+        try:
+            if not os.path.exists(file_path):
+                return result
+            with open(file_path, 'r', encoding='utf-8') as f:
+                data = json.load(f)
+            streams = data.get('streams', [])
+            for s in streams:
+                mp = s.get('mount_point', '')
+                name = s.get('name', mp)
+                key = f"{mp}_{name}"
+                st = s.get('status')
+                if st in ('online', 'offline'):
+                    result[key] = st
+            return result
+        except Exception as e:
+            self.logger.debug(f"Не удалось загрузить предыдущий статус из {file_path}: {e}")
+            return result
+    
     def run_check(self):
         """Выполнение проверки всех потоков"""
         self.logger.info("Запуск проверки Icecast потоков")
@@ -594,6 +619,9 @@ class IcecastChecker:
         if not enabled_streams:
             self.logger.warning("Нет активных потоков для проверки")
             return True
+        
+        # Статус с прошлого прохода: уведомление только при переходе в offline
+        previous_run_status = self._load_previous_status()
         
         all_streams_ok = True
         streams_data = []  # Собираем данные о всех потоках для JSON
@@ -656,54 +684,28 @@ class IcecastChecker:
                 # Отладочная информация
                 self.logger.debug(f"Поток '{stream_name}' офлайн. Ошибок подряд: {self.consecutive_failures[stream_key]}")
                 
-                # Умное логирование для избежания спама
+                # Умное логирование: не заваливаем лог, логируем только при смене на offline или редко
                 if self.should_log_failure(stream_key, self.consecutive_failures[stream_key]):
                     self.logger.warning(f"Поток '{stream_name}' недоступен (попытка {self.consecutive_failures[stream_key]})")
                     self.last_log_time[stream_key] = time.time()
                 
-                # Отправляем уведомление только при первом обнаружении проблемы
-                if self.consecutive_failures[stream_key] == 1:
-                    # timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                # Уведомление только при переходе в offline (смена статуса с прошлого прохода).
+                # Пока статус остаётся "offline" — только проверяем, не шлём в Telegram и не спамим в лог.
+                was_online_or_new = previous_run_status.get(stream_key) != "offline"
+                if was_online_or_new:
                     auth_config = icecast_config.get('auth', {})
                     auth_enabled = auth_config.get('enabled', False)
                     
                     message = f"🚨 <b>ВНИМАНИЕ!</b>\n\n"
                     message += f"Поток '{stream_name}' недоступен!\n"
-                    #message += f"Время: {timestamp}\n"
                     message += f"Сервер: {icecast_config['host']}\n"
                     message += f"Протокол: {protocol.upper()}\n"
                     message += f"Mount point: {mount_point}\n \n"
-                    # if auth_enabled:
-                    #     message += f"Авторизация: включена\n"
                     message += f"**ПЕРЕЗАПУСТИТЕ СТРИМИНГ**"
                     
                     self.send_telegram_notification(message, stream_key)
                     self.send_email_notification(
                         subject=f"Поток '{stream_name}' недоступен",
-                        message=message,
-                        stream_key=stream_key
-                    )
-                
-                # Периодические уведомления о длительных проблемах (каждые 30 попыток)
-                elif self.consecutive_failures[stream_key] % 30 == 0:
-                    #timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-                    auth_config = icecast_config.get('auth', {})
-                    auth_enabled = auth_config.get('enabled', False)
-                    
-                    message = f"⚠️ <b>ПРОДОЛЖАЮЩАЯСЯ ПРОБЛЕМА</b>\n\n"
-                    message += f"Поток '{stream_name}' все еще недоступен!\n"
-                    # message += f"Время: {timestamp}\n"
-                    message += f"Попытка: {self.consecutive_failures[stream_key]}\n"
-                    message += f"Сервер: {icecast_config['host']}:{icecast_config['port']}\n"
-                    message += f"Протокол: {protocol.upper()}\n"
-                    message += f"Mount point: {mount_point}\n \n"
-                    # if auth_enabled:
-                    #     message += f"Авторизация: включена\n"
-                    message += f"**ПЕРЕЗАПУСТИТЕ СТРИМИНГ**"
-                    
-                    self.send_telegram_notification(message, stream_key)
-                    self.send_email_notification(
-                        subject=f"Длительная проблема потока '{stream_name}'",
                         message=message,
                         stream_key=stream_key
                     )
