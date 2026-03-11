@@ -29,6 +29,8 @@ class IcecastChecker:
         self.consecutive_failures = {}
         self.stream_status = {}
         self.last_log_time = {}  # Время последнего логирования для каждого потока
+        self.last_success_time = None  # Время последнего успешного прохода проверки
+        self.last_error_time = None    # Время последнего прохода с ошибками (offline потоки)
         
     def _load_config(self, config_path):
         """Загрузка конфигурации из JSON файла"""
@@ -542,7 +544,19 @@ class IcecastChecker:
                 server_url = f"{protocol}://{host}"
             else:
                 server_url = f"{protocol}://{host}:{port}"
-            
+
+            # Подсчитываем простые метрики по потокам
+            total_streams = len(streams_data)
+            online_streams = sum(1 for s in streams_data if s.get("status") == "online")
+            offline_streams = total_streams - online_streams
+
+            total_listeners = 0
+            for s in streams_data:
+                try:
+                    total_listeners += int(s.get("listeners", 0) or 0)
+                except (TypeError, ValueError):
+                    continue
+
             # Формируем структуру данных
             status_data = {
                 "last_update": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
@@ -551,6 +565,14 @@ class IcecastChecker:
                     "port": port,
                     "protocol": protocol,
                     "url": server_url
+                },
+                "metrics": {
+                    "total_streams": total_streams,
+                    "online_streams": online_streams,
+                    "offline_streams": offline_streams,
+                    "total_listeners": total_listeners,
+                    "last_success": self.last_success_time,
+                    "last_error": self.last_error_time
                 },
                 "streams": streams_data
             }
@@ -686,6 +708,13 @@ class IcecastChecker:
                         stream_key=stream_key
                     )
         
+        # Обновляем метрики успешного/проблемного прохода
+        now_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        if all_streams_ok:
+            self.last_success_time = now_str
+        else:
+            self.last_error_time = now_str
+
         # Записываем статус всех потоков в JSON файл
         self.write_status_json(streams_data)
         
