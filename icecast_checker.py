@@ -12,9 +12,10 @@ import time
 import smtplib
 import requests
 from datetime import datetime
-from logging.handlers import RotatingFileHandler
 from pathlib import Path
-from email.mime.text import MIMEText
+from email.mime_text import MIMEText
+
+from logging_utils import setup_logging_from_config
 
 
 class IcecastChecker:
@@ -45,42 +46,7 @@ class IcecastChecker:
 
     
     def _setup_logging(self):
-        log_config = self.config.get('logging', {})
-        log_file_template = log_config.get('log_file', 'icecast_check.log')
-        log_level = log_config.get('log_level', 'INFO')
-        max_size = log_config.get('max_file_size', 10485760)
-        backup_count = log_config.get('backup_count', 5)
-
-        now = datetime.now()
-        log_file = log_file_template.format(
-            YYYY=now.strftime('%Y'),
-            MM=now.strftime('%m'),
-            DD=now.strftime('%d')
-        )
-
-        log_dir = os.path.dirname(log_file)
-        if log_dir and not os.path.exists(log_dir):
-            os.makedirs(log_dir, exist_ok=True)
-
-        self.logger = logging.getLogger('icecast_checker')
-        self.logger.setLevel(getattr(logging, log_level.upper()))
-
-        file_handler = RotatingFileHandler(
-            log_file, 
-            maxBytes=max_size, 
-            backupCount=backup_count,
-            encoding='utf-8'
-        )
-
-        formatter = logging.Formatter(
-            '%(asctime)s - %(name)s - %(levelname)s - %(message)s'
-        )
-        file_handler.setFormatter(formatter)
-        self.logger.addHandler(file_handler)
-
-        console_handler = logging.StreamHandler()
-        console_handler.setFormatter(formatter)
-        self.logger.addHandler(console_handler)
+        self.logger = setup_logging_from_config(self.config, logger_name="icecast_checker")
     
     def test_endpoint_availability(self, url, headers, auth_enabled, auth_username, auth_password, timeout):
         try:
