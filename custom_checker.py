@@ -10,18 +10,9 @@ from icecast_checker import IcecastChecker
 
 
 class CustomChecker(IcecastChecker):
-    """Чекер для произвольного JSON-API (map mount -> listeners).
-
-    Логика уведомлений и работа с status-online.json наследуются от IcecastChecker:
-    уведомление о недоступности отправляется только при переходе в offline (смена статуса).
-    """
+    """Checker for custom JSON API (mount -> listeners). Notifications and status-online.json logic inherited from IcecastChecker."""
 
     def check_icecast_stream(self, stream_config):
-        """
-        Переопределённая проверка потока:
-        - дергаем один endpoint из конфигурации
-        - ожидаем JSON-объект {mount: listeners}
-        """
         icecast_config = self.config.get("icecast", {})
 
         host = icecast_config.get("host", "localhost")
@@ -33,17 +24,15 @@ class CustomChecker(IcecastChecker):
         user_agent = icecast_config.get("user_agent", "IcecastChecker/1.0")
         endpoint = icecast_config.get("endpoint", "/status-json.xsl")
 
-        # Настройка авторизации
         auth_config = icecast_config.get("auth", {})
         auth_enabled = auth_config.get("enabled", False)
         auth_username = auth_config.get("username", "")
         auth_password = auth_config.get("password", "")
 
         self.logger.debug(
-            f"[custom] Конфигурация: host={host}, port={port}, use_https={use_https}, endpoint={endpoint}"
+            f"[custom] host={host}, port={port}, use_https={use_https}, endpoint={endpoint}"
         )
 
-        # Формируем URL
         protocol = "https" if use_https else "http"
 
         if (use_https and port == 443) or (not use_https and port == 80):
@@ -52,7 +41,7 @@ class CustomChecker(IcecastChecker):
             base_url = f"{protocol}://{host}:{port}"
 
         stats_url = f"{base_url}{endpoint}"
-        self.logger.debug(f"[custom] Используем endpoint: {stats_url}")
+        self.logger.debug(f"[custom] Using endpoint: {stats_url}")
 
         headers = {
             "User-Agent": user_agent,
@@ -60,7 +49,6 @@ class CustomChecker(IcecastChecker):
             "Connection": "close",
         }
 
-        # Настройка авторизации
         auth = None
         if auth_enabled and auth_username and auth_password:
             auth = (auth_username, auth_password)
@@ -76,52 +64,44 @@ class CustomChecker(IcecastChecker):
 
         except requests.exceptions.ConnectionError as e:
             self.logger.error(
-                f"[custom] Ошибка подключения к серверу {host}:{port}: {e}"
+                f"[custom] Connection error to {host}:{port}: {e}"
             )
             return self.create_offline_stream_info(
                 mount_point, stream_name, f"Connection error: {e}"
             )
         except requests.exceptions.Timeout as e:
             self.logger.error(
-                f"[custom] Таймаут подключения к серверу {host}:{port}: {e}"
+                f"[custom] Timeout connecting to {host}:{port}: {e}"
             )
             return self.create_offline_stream_info(
                 mount_point, stream_name, f"Timeout: {e}"
             )
         except requests.exceptions.HTTPError as e:
-            self.logger.error(f"[custom] HTTP ошибка при подключении: {e}")
+            self.logger.error(f"[custom] HTTP error: {e}")
             return self.create_offline_stream_info(
                 mount_point, stream_name, f"HTTP error: {e}"
             )
         except ValueError as e:
-            # JSON decode error
-            self.logger.error(f"[custom] Ошибка парсинга JSON ответа: {e}")
+            self.logger.error(f"[custom] JSON parse error: {e}")
             return self.create_offline_stream_info(
                 mount_point, stream_name, f"JSON parse error: {e}"
             )
         except Exception as e:
-            self.logger.error(f"[custom] Неожиданная ошибка при проверке потока: {e}")
+            self.logger.error(f"[custom] Unexpected error checking stream: {e}")
             return self.create_offline_stream_info(
                 mount_point, stream_name, f"Unexpected error: {e}"
             )
 
     def parse_simple_map_response(self, stats_map, mount_point, stream_name):
-        """
-        Ожидается структура:
-        {
-          "/mount1": 2,
-          "/mount2": 5
-        }
-        """
         if not isinstance(stats_map, dict):
-            self.logger.error("[custom] Неверный формат JSON: ожидается объект {mount: listeners}")
+            self.logger.error("[custom] Invalid JSON: expected object {mount: listeners}")
             return self.create_offline_stream_info(
                 mount_point, stream_name, "Invalid custom JSON format"
             )
 
         if mount_point not in stats_map:
             self.logger.warning(
-                f"[custom] Поток '{stream_name}' ({mount_point}) не найден в custom-статистике"
+                f"[custom] Stream '{stream_name}' ({mount_point}) not found in custom stats"
             )
             return self.create_offline_stream_info(
                 mount_point,
@@ -135,7 +115,7 @@ class CustomChecker(IcecastChecker):
             listeners = 0
 
         self.logger.info(
-            f"[custom] Поток '{stream_name}' ({mount_point}) активен, слушателей: {listeners}"
+            f"[custom] Stream '{stream_name}' ({mount_point}) online, listeners: {listeners}"
         )
 
         return {
@@ -153,7 +133,6 @@ class CustomChecker(IcecastChecker):
 
 
 def main():
-    """Основная функция для custom-проверки."""
     if len(sys.argv) > 1 and sys.argv[1] == "--once":
         checker = CustomChecker()
         success = checker.run_check()

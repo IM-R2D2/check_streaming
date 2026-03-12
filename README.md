@@ -1,566 +1,274 @@
-# Скрипт проверки Icecast потока
+# Icecast Stream Monitor
 
-Этот скрипт предназначен для мониторинга состояния Icecast потока и отправки уведомлений в Telegram при его недоступности.
+[![Python 3.10+](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/downloads/)
+[![License](https://img.shields.io/badge/license-See%20repo-lightgrey.svg)](LICENSE)
 
-## Возможности
+Monitor Icecast (and custom JSON-API) streams and get Telegram alerts when a stream goes down. Supports multiple mount points, HTTP/HTTPS, Basic Auth, and optional JSON status output for dashboards.
 
-- ✅ **Мониторинг множественных потоков** - проверка нескольких mount point'ов одновременно
-- ✅ **Работа с удаленными серверами** - внешний мониторинг Icecast серверов
-- ✅ **HTTP Basic Authentication** - поддержка авторизации на защищенных серверах
-- ✅ **Гибкие endpoints** - автоматическое определение доступных API endpoints (`/admin/stats`, `/status-json.xsl`, `/admin/listmounts.xsl`, `/status.xsl`)
-- ✅ **JSON статус файл** - автоматическое создание `status-online.json` с детальной информацией о всех потоках
-- ✅ **Умные уведомления в Telegram**:
-  - 🚨 Уведомления о проблемах с cooldown периодом (избежание спама)
-  - ✅ Уведомления о восстановлении (без cooldown, отправляются сразу)
-  - 📊 Детальная информация о потоке (слушатели, битрейт, трек и т.д.)
-- ✅ **Логирование с датой** - файлы логов создаются с датой в имени (`2024-09-14-icecast_check.log`)
-- ✅ **Systemd сервис** - автозапуск и управление через systemctl
-- ✅ **Виртуальное окружение** - изолированная установка зависимостей
-- ✅ **Настраиваемые параметры** - интервалы проверки, cooldown периоды, размеры логов
-- ✅ **Обработка ошибок** - повторные попытки и детальное логирование
-- ✅ **Поддержка HTTP/HTTPS** - автоматическое определение стандартных портов
+---
 
-## Установка и настройка
+## Table of Contents
 
-### 1. Установка зависимостей
+- [Features](#features)
+- [Requirements](#requirements)
+- [Quick Start (Docker)](#quick-start-docker)
+- [Configuration](#configuration)
+  - [Icecast](#icecast-configuration)
+  - [Custom checker](#custom-checker)
+  - [Telegram](#telegram)
+  - [Endpoints & ports](#endpoints-and-ports)
+- [Usage](#usage)
+- [Project structure](#project-structure)
+- [Logging](#logging)
+- [Notifications](#notifications)
+- [Troubleshooting](#troubleshooting)
+- [Contributing](#contributing)
 
-```bash
-pip install -r requirements.txt
-```
+---
 
-### 2. Настройка конфигурации
+## Features
 
-Отредактируйте файл `config.json`:
+- **Multiple streams** — Monitor several mount points at once (main, backup, different bitrates).
+- **Remote monitoring** — Check Icecast servers from an external host.
+- **HTTP Basic Auth** — Support for protected Icecast/admin endpoints.
+- **Flexible endpoints** — Auto-detection of Icecast API endpoints: `/admin/stats`, `/status-json.xsl`, `/admin/listmounts.xsl`, `/status.xsl`.
+- **JSON status file** — Optional `status-online.json` with per-stream status for web UIs.
+- **Smart Telegram notifications**:
+  - Down alerts with cooldown to avoid spam.
+  - Recovery alerts sent immediately (no cooldown).
+  - Periodic reminders for long-lasting outages (e.g. every 30 checks).
+- **Date-based logging** — Log files named by date with rotation (e.g. `YYYY-MM-DD-icecast_check.log`).
+- **Configurable** — Check interval, cooldown, log size, log level.
+- **Error handling** — Retries and detailed logging.
+- **HTTP/HTTPS** — Standard ports (80/443) handled without explicit port in URLs when applicable.
+- **Two checker types** — **Icecast** (native Icecast API) and **Custom** (any JSON API returning `{ "mount": listeners }`).
 
-```json
-{
-    "icecast": {
-        "host": "your-icecast-server.com", // IP адрес или домен Icecast сервера
-        "port": 8000,                      // Порт Icecast сервера (443 для HTTPS, 80 для HTTP)
-        "timeout": 15,                     // Таймаут подключения (сек)
-        "check_interval": 60,              // Интервал проверки (сек)
-        "use_https": false,                // Использовать HTTPS (true/false)
-        "user_agent": "IcecastChecker/1.0", // User-Agent для запросов
-        "endpoint": "/admin/stats",         // Предпочтительный endpoint (опционально)
-        "endpoint_only": false,            // Использовать только указанный endpoint (true/false)
-        "auth": {                          // Настройки авторизации
-            "username": "",                // Имя пользователя для HTTP Basic Auth
-            "password": "",                // Пароль для HTTP Basic Auth
-            "enabled": false               // Включить авторизацию (true/false)
-        },
-        "streams": [                       // Массив потоков для проверки
-            {
-                "mount_point": "/stream",  // Mount point потока
-                "name": "Основной поток",  // Человекочитаемое имя
-                "enabled": true            // Включить/выключить проверку
-            },
-            {
-                "mount_point": "/backup",
-                "name": "Резервный поток",
-                "enabled": true
-            },
-            {
-                "mount_point": "/test",
-                "name": "Тестовый поток",
-                "enabled": false
-            }
-        ]
-    },
-    "telegram": {
-        "bot_token": "YOUR_BOT_TOKEN", // Токен Telegram бота
-        "chat_id": "YOUR_CHAT_ID",     // ID чата для уведомлений
-        "enabled": true                // Включить/выключить уведомления
-    },
-    "logging": {
-        "log_file": "/var/log/scripts/check_streaming/{YYYY}-{MM}-{DD}-icecast_check.log",
-        "log_level": "INFO",           // DEBUG, INFO, WARNING, ERROR
-        "max_file_size": 10485760,     // Максимальный размер лога (байт)
-        "backup_count": 5              // Количество архивных файлов логов
-    },
-    "status_json": {
-        "enabled": true,               // Включить создание JSON статус файла
-        "file_path": "status-online.json", // Путь к JSON файлу
-        "update_interval": 30          // Интервал обновления (сек)
-    },
-    "notifications": {
-        "retry_attempts": 3,           // Количество попыток отправки
-        "retry_delay": 30,             // Задержка между попытками (сек)
-        "cooldown_period": 300         // Период между уведомлениями (сек)
-    }
-}
-```
+---
 
-### 3. Настройка Icecast сервера
+## Requirements
 
-Для работы с удаленным мониторингом убедитесь, что:
+- **Python 3.10+** (for Docker: image uses Python 3.14)
+- **Dependencies**: `requests`, `beautifulsoup4` (see `requirements.txt`)
+- Network access to the Icecast (or custom) server and to Telegram API
+- For remote monitoring: Icecast server must be reachable (firewall/port open, stats enabled)
 
-1. **Icecast сервер доступен извне** - проверьте настройки файрвола
-2. **Порт открыт** - обычно это порт 8000 (или другой настроенный)
-3. **Статистика включена** - в конфигурации Icecast должен быть включен вывод статистики
-4. **Доступ к `/status-json.xsl`** - этот endpoint должен быть доступен
+---
 
-Пример настройки в `icecast.xml`:
-```xml
-<location>/status-json.xsl</location>
-<admin>admin@yourdomain.com</admin>
-```
+## Quick Start (Docker)
 
-### 4. Настройка endpoints
+1. **Clone and enter the repo**
+   ```bash
+   git clone <repo-url>
+   cd check_streaming
+   ```
 
-Скрипт поддерживает различные Icecast API endpoints и автоматически определяет доступный:
+2. **Create config from template**
+   - For **Icecast**: copy `config_icecast_example.json` to `config.json`.
+   - For **custom JSON-API**: copy `config_custom_example.json` to `config.json`.
 
-**Доступные endpoints:**
-- `/admin/stats` - XML статистика (рекомендуется)
-- `/status-json.xsl` - JSON статистика
-- `/admin/listmounts.xsl` - HTML список mount points
-- `/status.xsl` - альтернативный JSON endpoint
+3. **Edit `config.json`** — Set Icecast host/port, streams, and Telegram `bot_token` / `chat_id`.
 
-**Параметры конфигурации:**
-- `endpoint` - предпочтительный endpoint (например, `/admin/stats`)
-- `endpoint_only` - использовать только указанный endpoint (`true`/`false`)
+4. **Deploy**
+   ```bash
+   chmod +x deploy.sh
+   ./deploy.sh
+   ```
+   Or manually:
+   ```bash
+   docker compose up -d --build
+   ```
 
-**Примеры использования:**
+The container runs `global-checker.py`, which picks **Icecast** or **Custom** checker from `icecast.type` in config. Config is mounted read-only; `status-online.json` and logs are written to local files/dirs. Restart policy is `always`; healthcheck runs `global-checker.py --once` every 60s.
+
+---
+
+## Configuration
+
+Config file: `config.json` (not committed; use example configs as templates).
+
+### Icecast configuration
+
+| Field | Description |
+|-------|-------------|
+| `icecast.type` | `"icecast"` (default) or `"custom"` |
+| `icecast.id` | Optional identifier (e.g. for log file names). |
+| `icecast.host` | Icecast hostname or IP. |
+| `icecast.port` | Port (e.g. 8000; 443 for HTTPS, 80 for HTTP). |
+| `icecast.use_https` | `true` / `false`. |
+| `icecast.timeout` | Request timeout in seconds. |
+| `icecast.check_interval` | Seconds between checks. |
+| `icecast.endpoint` | Preferred stats endpoint (e.g. `/admin/stats`). |
+| `icecast.endpoint_only` | If `true`, use only `endpoint`; if `false`, fallback to others. |
+| `icecast.auth` | `username`, `password`, `enabled` for HTTP Basic Auth. |
+| `icecast.streams` | Array of `{ "mount_point", "name", "enabled" }`. |
+
+**Example (excerpt):**
 
 ```json
-// Использовать только XML endpoint
 {
-    "icecast": {
-        "endpoint": "/admin/stats",
-        "endpoint_only": true
-    }
-}
-
-// Предпочитать XML endpoint, но пробовать другие при недоступности
-{
-    "icecast": {
-        "endpoint": "/admin/stats",
-        "endpoint_only": false
-    }
-}
-
-// Автоматическое определение (по умолчанию)
-{
-    "icecast": {
-        "endpoint_only": false
-    }
-}
-```
-
-### 5. Особенности работы с портами
-
-Скрипт автоматически обрабатывает стандартные порты:
-
-- **Порт 443 (HTTPS)**: URL формируется как `https://hostname/endpoint` (без указания порта)
-- **Порт 80 (HTTP)**: URL формируется как `http://hostname/endpoint` (без указания порта)  
-- **Другие порты**: URL формируется как `protocol://hostname:port/endpoint`
-
-**Примеры конфигурации:**
-
-```json
-// HTTPS на стандартном порту 443
-{
-    "icecast": {
-        "host": "live1.zharafm.ru",
-        "port": 443,
-        "use_https": true
-    }
-}
-// Результат: https://live1.zharafm.ru/status-json.xsl
-
-// HTTP на стандартном порту 80  
-{
-    "icecast": {
-        "host": "radio.example.com",
-        "port": 80,
-        "use_https": false
-    }
-}
-// Результат: http://radio.example.com/status-json.xsl
-
-// Кастомный порт
-{
-    "icecast": {
-        "host": "icecast.example.com", 
-        "port": 8080,
-        "use_https": false
-    }
-}
-// Результат: http://icecast.example.com:8080/status-json.xsl
-```
-
-### 5. Настройка авторизации
-
-Если ваш Icecast сервер защищен паролем:
-
-1. **Включите авторизацию** в конфигурации: `"enabled": true`
-2. **Укажите учетные данные**:
-   - `username` - имя пользователя для HTTP Basic Auth
-   - `password` - пароль для HTTP Basic Auth
-3. **Проверьте права доступа** - пользователь должен иметь доступ к статистике
-
-**Пример конфигурации с авторизацией:**
-```json
-{
-    "icecast": {
-        "host": "secure-icecast.example.com",
-        "port": 8000,
-        "auth": {
-            "username": "monitor_user",
-            "password": "secure_password",
-            "enabled": true
-        }
-    }
-}
-```
-
-### 6. Настройка множественных потоков
-
-Скрипт поддерживает проверку нескольких потоков одновременно:
-
-- **`mount_point`** - путь к потоку на сервере (например `/stream`, `/backup`)
-- **`name`** - человекочитаемое имя для логов и уведомлений
-- **`enabled`** - включить/выключить проверку конкретного потока
-
-**Примеры использования:**
-- Основной и резервный потоки
-- Разные качества одного потока (`/stream128`, `/stream320`)
-- Тестовые и продакшн потоки
-- Потоки разных радиостанций
-
-### 6. Настройка Telegram бота
-
-1. Создайте бота через [@BotFather](https://t.me/BotFather)
-2. Получите токен бота
-3. Узнайте ID чата (можно использовать [@userinfobot](https://t.me/userinfobot))
-4. Добавьте токен и ID в конфигурацию
-
-### 7. Настройка JSON статус файла
-
-Скрипт автоматически создает JSON файл со статусом всех потоков:
-
-- **`enabled`** - включить/выключить создание JSON файла
-- **`file_path`** - путь к JSON файлу (по умолчанию `status-online.json`)
-- **`update_interval`** - интервал обновления файла (сек)
-
-**Пример содержимого `status-online.json`:**
-```json
-{
-  "last_update": "2024-01-15 14:30:25",
-  "server": {
-    "host": "radio.example.com",
+  "icecast": {
+    "id": "radio1",
+    "type": "icecast",
+    "host": "radio1.example.com",
     "port": 8000,
-    "protocol": "http"
-  },
-  "streams": [
-    {
-      "mount_point": "/COMEDY-1065FM",
-      "name": "Comedy Radio",
-      "status": "online",
-      "listeners": 10,
-      "stream_started": "Sat, 13 Sep 2025 00:46:41 +0300",
-      "currently_playing": "Comedy Radio",
-      "bitrate": "128",
-      "server_description": "Comedy Radio Server",
-      "genre": "Comedy",
-      "last_check": "2024-01-15 14:30:25"
-    }
-  ]
+    "use_https": false,
+    "timeout": 15,
+    "check_interval": 60,
+    "endpoint": "/admin/stats",
+    "endpoint_only": false,
+    "auth": {
+      "username": "admin",
+      "password": "secret",
+      "enabled": true
+    },
+    "streams": [
+      { "mount_point": "/main", "name": "Main 128k", "enabled": true },
+      { "mount_point": "/backup", "name": "Backup 64k", "enabled": true }
+    ]
+  }
 }
 ```
 
-## Использование
+### Custom checker
 
-### Рекомендуемый способ: Docker
+For non-Icecast servers that expose a JSON API returning a map **mount → listener count**:
 
-1. Скопируйте пример конфига в `config.json` и заполните реальные значения: для Icecast — `config_icecast_example.json`, для кастомных проверок — `config_custom_example.json`.
-2. Соберите и запустите контейнер:
+- Set `icecast.type` to `"custom"`.
+- Set `icecast.endpoint` to your API path (e.g. `/api/streams`).
+- Use `endpoint_only: true` so only that URL is used.
+- Streams are still listed in `icecast.streams`; the checker requests the endpoint once and checks each `mount_point` in the response.
+
+Expected response shape:
+
+```json
+{
+  "/main": 5,
+  "/backup": 2
+}
+```
+
+Use `config_custom_example.json` as a template.
+
+### Telegram
+
+```json
+"telegram": {
+  "bot_token": "YOUR_BOT_TOKEN",
+  "chat_id": "YOUR_CHAT_ID",
+  "enabled": true
+}
+```
+
+Create a bot via [@BotFather](https://t.me/BotFather); get chat ID e.g. via [@userinfobot](https://t.me/userinfobot).
+
+### Endpoints and ports
+
+- **Endpoints**: `/admin/stats`, `/status-json.xsl`, `/admin/listmounts.xsl`, `/status.xsl` (auto-tried when `endpoint_only` is false).
+- **Port 443 (HTTPS)** / **80 (HTTP)**: URL is built without port (e.g. `https://host/path`).
+- **Other ports**: URL includes port (e.g. `http://host:8000/path`).
+
+### Logging and status file
+
+```json
+"logging": {
+  "log_file": "/var/log/scripts/check_streaming/{YYYY}-{MM}-{DD}-icecast_check.log",
+  "log_level": "INFO",
+  "max_file_size": 10485760,
+  "backup_count": 5
+},
+"status_json": {
+  "enabled": true,
+  "file_path": "status-online.json",
+  "update_interval": 30
+},
+"notifications": {
+  "retry_attempts": 3,
+  "retry_delay": 30,
+  "cooldown_period": 300
+}
+```
+
+---
+
+## Usage
+
+- **Docker (recommended)**: `./deploy.sh` or `docker compose up -d`. The process runs continuously and restarts on failure.
+- **One-shot check** (e.g. for healthchecks): `python global-checker.py --once` — exit code 0 = all streams OK, 1 = at least one failed.
+
+---
+
+## Project structure
+
+| File / directory | Purpose |
+|------------------|---------|
+| `global-checker.py` | Entry point; loads config, runs Icecast or Custom checker. |
+| `icecast_checker.py` | Icecast checker: stats API, Telegram, status JSON, logging. |
+| `custom_checker.py` | Custom checker (subclass): single JSON endpoint `{ mount: listeners }`. |
+| `config.json` | Runtime config (gitignored). |
+| `config_icecast_example.json` | Example config for Icecast. |
+| `config_custom_example.json` | Example config for custom API. |
+| `status-online.json` | Written by checker with current stream status. |
+| `Dockerfile` | Image for running the checker. |
+| `docker-compose.yml` | Service definition, volumes, healthcheck. |
+| `deploy.sh` | Creates dirs, copies example config if needed, runs compose. |
+
+---
+
+## Logging
+
+- Log files: date in name, e.g. `YYYY-MM-DD-icecast_check.log`.
+- Levels: `DEBUG`, `INFO`, `WARNING`, `ERROR`.
+- Smart throttling: first 3 failures always logged; then every 10th attempt and every ~5 minutes for long outages.
+- In Docker, logs also go to the container log (e.g. `docker compose logs -f`); rotation via compose `logging` options.
+
+---
+
+## Notifications
+
+- **Down**: Sent when a stream goes from OK to not OK; cooldown between repeated down alerts for the same stream.
+- **Recovery**: Sent as soon as a stream is back (no cooldown).
+- **Periodic**: Reminder every N failed checks (e.g. 30) while a stream stays down.
+
+Message content includes stream name, server, mount point, and (for recovery) listener count.
+
+---
+
+## Troubleshooting
+
+| Symptom | What to check |
+|--------|----------------|
+| Connection refused | Server reachable? Port open? |
+| Timeout | Increase `timeout`; check network. |
+| HTTP 401 | Wrong `auth.username` / `auth.password`. |
+| HTTP 403 | User has no access to stats. |
+| HTTP 404 | Stats endpoint not enabled on server (e.g. `/status-json.xsl`). |
+| JSON parse error | Server returning non-JSON or wrong format; for custom, ensure `{ "mount": number }`. |
+
+**Manual checks:**
 
 ```bash
-docker compose up -d
+# HTTP
+curl http://your-icecast-server:8000/status-json.xsl
+
+# HTTPS
+curl -k https://your-icecast-server:443/status-json.xsl
+
+# With Basic Auth
+curl -u username:password http://your-icecast-server:8000/status-json.xsl
 ```
 
-При этом:
-- `config.json` монтируется в контейнер только для чтения;
-- `status-online.json` и логи пишутся в локальные файлы/директории.
+Set `log_level` to `DEBUG` in config for more detail.
 
-Контейнер автоматически перезапускается при сбоях (`restart: always` в `docker-compose.yml`).
+---
 
-### Легаси-скрипты (без Docker)
+## Contributing
 
-Если Docker недоступен, в директории `legacy/` сохранены:
-- shell-скрипты для Linux/macOS (`run_icecast_checker.sh`, `run_icecast_checker_background.sh`, `stop_icecast_checker.sh`);
-- batch-скрипты для Windows (`run_icecast_checker.bat`, `run_icecast_checker_background.bat`);
-- скрипты установки/удаления systemd-сервиса и Windows-службы.
+1. Fork the repository.
+2. Create a branch for your change (`git checkout -b feature/your-feature`).
+3. Commit and push; open a Pull Request with a clear description.
 
-Эти варианты запуска поддерживаются как «legacy» и не используются в Docker-сценарии.
+---
 
-## Логирование с датой
+## License
 
-Все события записываются в лог файлы с датой в имени и ротацией. По умолчанию логи сохраняются в `/var/log/scripts/check_streaming/YYYY-MM-DD-icecast_check.log`.
-
-**Примеры файлов логов:**
-- `2024-09-14-icecast_check.log` - лог за 14 сентября 2024
-- `2024-09-15-icecast_check.log` - лог за 15 сентября 2024
-
-**Уровни логирования:**
-- `DEBUG` - подробная отладочная информация (endpoints, конфигурация, парсинг)
-- `INFO` - общая информация о работе (статус потоков, уведомления)
-- `WARNING` - предупреждения (потоки недоступны)
-- `ERROR` - ошибки (проблемы подключения, парсинга)
-
-**Просмотр логов:**
-```bash
-# Текущий лог
-tail -f /var/log/scripts/check_streaming/$(date +%Y-%m-%d)-icecast_check.log
-
-# Все логи
-ls -la /var/log/scripts/check_streaming/
-```
-
-## Принцип работы
-
-1. Скрипт подключается к Icecast серверу через API статистики (`/status-json.xsl`)
-2. **Проверяет все активные потоки** из массива `streams` в конфигурации
-3. Для каждого потока проверяет наличие указанного mount point в списке активных потоков
-4. При недоступности потока отправляет **индивидуальное уведомление** в Telegram
-5. Использует **отдельные cooldown периоды** для каждого потока
-6. Ведет **отдельные счетчики** последовательных неудач для каждого потока
-7. **Умное логирование** - избегает спама в логах при длительных проблемах
-8. **Периодические уведомления** о длительных проблемах (каждые 30 попыток)
-9. **Автоматическое создание JSON файла** со статусом всех потоков для веб-интерфейса
-10. Логирует статус каждого потока с человекочитаемыми именами
-
-## Умные уведомления в Telegram
-
-Скрипт отправляет два типа уведомлений:
-
-### 🚨 Уведомления о проблемах
-Отправляются при обнаружении недоступности потока с cooldown периодом (избежание спама):
-
-```
-🚨 ВНИМАНИЕ!
-
-Поток 'Основной поток' недоступен!
-Сервер: radio.example.com
-Протокол: HTTP
-Mount point: /stream
-
-**ПЕРЕЗАПУСТИТЕ СТРИМИНГ**
-```
-
-### ✅ Уведомления о восстановлении
-Отправляются сразу при восстановлении потока (без cooldown):
-
-```
-✅ ВОССТАНОВЛЕНИЕ!
-
-Поток 'Основной поток' снова доступен!
-Сервер: radio.example.com
-Mount point: /stream
-Слушателей: 5
-```
-
-### ⚠️ Периодические напоминания
-При длительных проблемах (каждые 30 попыток):
-
-```
-⚠️ ПРОДОЛЖАЮЩАЯСЯ ПРОБЛЕМА
-
-Поток 'Основной поток' все еще недоступен!
-Попытка: 30
-Сервер: radio.example.com:8000
-Протокол: HTTP
-Mount point: /stream
-Проверка с внешней площадки
-```
-
-**Пример периодического уведомления:**
-```
-⚠️ ПРОДОЛЖАЮЩАЯСЯ ПРОБЛЕМА
-
-Поток 'Основной поток' все еще недоступен!
-Время: 2024-01-15 15:00:25
-Попытка: 30
-Сервер: radio.example.com:8000
-Протокол: HTTP
-Mount point: /stream
-Проверка с внешней площадки
-```
-
-## Остановка скрипта
-
-- **Windows**: Найдите процесс `python.exe` в диспетчере задач и завершите его
-- **Linux/macOS**: 
-  - Для обычного запуска: используйте `Ctrl+C`
-  - Для фонового режима: используйте `./stop_icecast_checker.sh`
-  - Или найдите процесс: `ps aux | grep icecast_checker` и завершите его: `kill <PID>`
-
-## Диагностика проблем
-
-### Проверка доступности сервера
-
-1. **Тест подключения к порту**:
-   ```bash
-   telnet your-icecast-server.com 8000
-   ```
-
-2. **Проверка HTTP ответа**:
-   ```bash
-   curl http://your-icecast-server.com:8000/status-json.xsl
-   ```
-
-3. **Проверка с HTTPS** (если используется):
-   ```bash
-   curl -k https://your-icecast-server.com:8000/status-json.xsl
-   ```
-
-4. **Проверка с авторизацией**:
-   ```bash
-   curl -u username:password http://your-icecast-server.com:8000/status-json.xsl
-   ```
-
-5. **Проверка с авторизацией и HTTPS**:
-   ```bash
-   curl -k -u username:password https://your-icecast-server.com:8000/status-json.xsl
-   ```
-
-### Частые проблемы
-
-- **Connection refused** - сервер недоступен или порт закрыт
-- **Timeout** - медленное соединение, увеличьте timeout в конфигурации
-- **HTTP 401** - ошибка авторизации, проверьте username и password
-- **HTTP 403** - доступ запрещен, недостаточно прав пользователя
-- **HTTP 404** - endpoint `/status-json.xsl` не настроен на сервере
-- **JSON parse error** - сервер возвращает не JSON данные
-
-### Логи
-
-Все события записываются в лог файл. Для отладки установите `log_level: "DEBUG"` в конфигурации.
-
-**Умное логирование:**
-- Первые 3 неудачи логируются всегда
-- После 3 неудач логируется только каждые 10 попыток
-- Дополнительно логируется каждые 5 минут для длительных проблем
-- При восстановлении потока счетчики сбрасываются
-
-## Примеры конфигураций
-
-### Радиостанция с основным и резервным потоком
-```json
-{
-    "icecast": {
-        "host": "radio.example.com",
-        "port": 8000,
-        "streams": [
-            {
-                "mount_point": "/main",
-                "name": "Основной поток 128k",
-                "enabled": true
-            },
-            {
-                "mount_point": "/backup",
-                "name": "Резервный поток 64k",
-                "enabled": true
-            }
-        ]
-    }
-}
-```
-
-### Множественные качества одного потока
-```json
-{
-    "icecast": {
-        "host": "stream.example.com",
-        "port": 8000,
-        "streams": [
-            {
-                "mount_point": "/stream320",
-                "name": "Высокое качество 320k",
-                "enabled": true
-            },
-            {
-                "mount_point": "/stream128",
-                "name": "Стандартное качество 128k",
-                "enabled": true
-            },
-            {
-                "mount_point": "/stream64",
-                "name": "Низкое качество 64k",
-                "enabled": true
-            }
-        ]
-    }
-}
-```
-
-### Тестовые и продакшн потоки
-```json
-{
-    "icecast": {
-        "host": "icecast.example.com",
-        "port": 8000,
-        "streams": [
-            {
-                "mount_point": "/live",
-                "name": "Продакшн поток",
-                "enabled": true
-            },
-            {
-                "mount_point": "/test",
-                "name": "Тестовый поток",
-                "enabled": false
-            }
-        ]
-    }
-}
-```
-
-### Защищенный сервер с авторизацией
-```json
-{
-    "icecast": {
-        "host": "secure-radio.example.com",
-        "port": 8000,
-        "use_https": true,
-        "auth": {
-            "username": "monitor_user",
-            "password": "secure_password_123",
-            "enabled": true
-        },
-        "streams": [
-            {
-                "mount_point": "/main",
-                "name": "Основной поток",
-                "enabled": true
-            },
-            {
-                "mount_point": "/backup",
-                "name": "Резервный поток",
-                "enabled": true
-            }
-        ]
-    }
-}
-```
-
-## Docker-конфигурация
-
-В репозитории есть:
-- `Dockerfile` — образ на базе `python:3.14.3-slim`;
-- `docker-compose.yml` — готовый сервис `icecast-checker` с томами для `config.json`, `status-online.json` и логов.
-
-Запуск:
-
-```bash
-docker compose up -d
-```
-
-
-## Требования
-
-- Python 3.6+
-- Библиотека `requests`
-- Доступ к интернету для отправки уведомлений в Telegram
-- Доступ к Icecast серверу для проверки статистики
-- Icecast сервер должен быть доступен извне (для удаленного мониторинга)
+See [LICENSE](LICENSE) in the repository root, if present. Otherwise contact the repository owner before reuse.

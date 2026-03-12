@@ -1,69 +1,62 @@
 #!/bin/bash
 
-# Простое развертывание icecast-checker в Docker
-# Использование:
+# Deploy icecast-checker in Docker.
+# Usage:
 #   chmod +x deploy.sh
 #   ./deploy.sh
 
 set -e
 
-echo "=== Развертывание icecast-checker в Docker ==="
+echo "=== Deploying icecast-checker in Docker ==="
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$SCRIPT_DIR"
 
-# 1. Проверка наличия Docker
 if ! command -v docker &>/dev/null; then
-  echo "Ошибка: Docker не установлен или не доступен в PATH."
+  echo "Error: Docker is not installed or not available in PATH."
   exit 1
 fi
 
-# 2. Проверка наличия docker compose (новый синтаксис)
 if docker compose version &>/dev/null; then
   COMPOSE_CMD="docker compose"
 elif command -v docker-compose &>/dev/null; then
-  # На случай старых установок
   COMPOSE_CMD="docker-compose"
 else
-  echo "Ошибка: ни 'docker compose', ни 'docker-compose' не найдены."
+  echo "Error: neither 'docker compose' nor 'docker-compose' found."
   exit 1
 fi
 
-# 3. Создание необходимых директорий и файлов
 LOGS_DIR="$SCRIPT_DIR/logs"
 STATUS_FILE="$SCRIPT_DIR/status-online.json"
 CONFIG_FILE="$SCRIPT_DIR/config.json"
 CONFIG_EXAMPLE="$SCRIPT_DIR/config_icecast_example.json"
 
-echo "Создаем директорию для логов: $LOGS_DIR"
+echo "Creating logs directory: $LOGS_DIR"
 mkdir -p "$LOGS_DIR"
 
 if [ ! -f "$STATUS_FILE" ]; then
-  echo "Создаем пустой файл статуса: $STATUS_FILE"
+  echo "Creating empty status file: $STATUS_FILE"
   echo '{}' > "$STATUS_FILE"
 fi
 
 if [ ! -f "$CONFIG_FILE" ]; then
   if [ -f "$CONFIG_EXAMPLE" ]; then
-    echo "config.json не найден. Копируем шаблон config_icecast_example.json."
+    echo "config.json not found. Copying template config_icecast_example.json."
     cp "$CONFIG_EXAMPLE" "$CONFIG_FILE"
-    echo "ВНИМАНИЕ: отредактируйте $CONFIG_FILE перед запуском в продакшене."
-    echo "Если нужен custom-формат, возьмите за основу config_custom_example.json."
+    echo "WARNING: edit $CONFIG_FILE before running in production."
+    echo "For custom format, use config_custom_example.json as a base."
   else
-    echo "Ошибка: ни config.json, ни config_icecast_example.json не найдены."
+    echo "Error: neither config.json nor config_icecast_example.json found."
     exit 1
   fi
 fi
 
-# 4. При пересборке обнуляем статус (чтобы уведомления сработали по текущему состоянию)
 echo '{}' > "$STATUS_FILE"
-echo "Обнулен файл статуса: $STATUS_FILE"
+echo "Status file reset: $STATUS_FILE"
 
-# 5. Сборка и запуск контейнера
-# Образ тегируется как icecast-checker:latest. Без --build будет использован уже собранный образ.
-echo "Собираем и запускаем контейнер через $COMPOSE_CMD..."
+echo "Building and starting container with $COMPOSE_CMD..."
 $COMPOSE_CMD up -d --build
 
-echo "=== Развертывание завершено ==="
-echo "Проверьте логи сервиса в директории: $LOGS_DIR"
+echo "=== Deployment complete ==="
+echo "Check service logs in directory: $LOGS_DIR"
 

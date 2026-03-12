@@ -1,11 +1,9 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-Глобальный чекер:
-- читает config.json
-- по полю type выбирает, какой чекер запускать:
-  - type: "icecast"  -> IcecastChecker из icecast_checker.py
-  - type: "custom"   -> CustomChecker из custom_checker.py
+Global checker: reads config.json and runs the appropriate checker based on type:
+  - type "icecast" -> IcecastChecker (icecast_checker.py)
+  - type "custom"  -> CustomChecker (custom_checker.py)
 """
 
 import json
@@ -19,19 +17,18 @@ from custom_checker import CustomChecker
 def load_config(config_path: str = "config.json") -> dict:
     abs_path = os.path.abspath(config_path)
     if not os.path.exists(abs_path):
-        print(f"Ошибка: Файл конфигурации {abs_path} не найден")
+        sys.stderr.write(f"Error: Config file not found: {abs_path}\n")
         sys.exit(1)
 
     try:
         with open(abs_path, "r", encoding="utf-8") as f:
             return json.load(f)
     except json.JSONDecodeError as e:
-        print(f"Ошибка в файле конфигурации {abs_path}: {e}")
+        sys.stderr.write(f"Error in config file {abs_path}: {e}\n")
         sys.exit(1)
 
 
 def main():
-    """Точка входа для выбора подходящего чекера."""
     config = load_config()
     icecast_cfg = config.get("icecast", {})
     checker_type = icecast_cfg.get("type", "icecast").lower()

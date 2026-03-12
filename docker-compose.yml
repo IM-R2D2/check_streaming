@@ -1,5 +1,5 @@
-# Один образ для всех серверов: при сборке тег icecast-checker:latest.
-# На каждом сервере — свой config.json и тома (логи, status-online.json).
+# Single image for all servers: build tag icecast-checker:latest.
+# Each server has its own config.json and volumes (logs, status-online.json).
 services:
   icecast-checker:
     image: icecast-checker:latest
@@ -8,23 +8,17 @@ services:
     restart: always
     working_dir: /app
     volumes:
-      # Рабочий конфиг (с секретами) на хосте
       - ./config.json:/app/config.json:ro
-      # JSON со статусом потоков
       - ./status-online.json:/app/status-online.json
-      # Логи: отдельная папка рядом с docker-compose.yml
       - ./logs:/var/log/scripts/check_streaming
     environment:
-      # Пример: часовой пояс контейнера (опционально)
       - TZ=Europe/Moscow
-    # Проверка "живости" сервиса
     healthcheck:
       test: ["CMD", "python", "global-checker.py", "--once"]
       interval: 60s
       timeout: 20s
       retries: 3
       start_period: 30s
-    # Ограничения и ротация логов Docker
     logging:
       driver: "json-file"
       options:
