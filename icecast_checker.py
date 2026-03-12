@@ -533,8 +533,12 @@ class IcecastChecker:
                 name = s.get('name', mp)
                 key = f"{mp}_{name}"
                 st = s.get('status')
+                count_error = s.get('count_error', 0)
                 if st in ('online', 'offline'):
-                    result[key] = st
+                    result[key] = {
+                        'status': st,
+                        'count_error': count_error
+                    }
             return result
         except Exception as e:
             self.logger.debug(f"Could not load previous status from {file_path}: {e}")
@@ -560,6 +564,14 @@ class IcecastChecker:
             stream_name = stream_config.get('name', mount_point)
             stream_key = f"{mount_point}_{stream_name}"
 
+            prev_state = previous_run_status.get(stream_key, {})
+            if isinstance(prev_state, dict):
+                prev_status = prev_state.get('status')
+                prev_count_error = int(prev_state.get('count_error', 0) or 0)
+            else:
+                prev_status = prev_state
+                prev_count_error = 0
+
             if stream_key not in self.consecutive_failures:
                 self.consecutive_failures[stream_key] = 0
             if stream_key not in self.stream_status:
@@ -567,15 +579,17 @@ class IcecastChecker:
             
             stream_info = self.check_icecast_stream(stream_config)
 
-            streams_data.append(stream_info)
-
             if stream_info.get('status') == 'online':
-                was_offline = self.consecutive_failures[stream_key] > 0
+                was_offline = prev_count_error >= 3
 
-                self.logger.debug(f"Stream '{stream_name}' online. Failures: {self.consecutive_failures[stream_key]}, was_offline: {was_offline}")
+                self.logger.debug(
+                    f"Stream '{stream_name}' online. "
+                    f"Prev count_error: {prev_count_error}, was_offline: {was_offline}"
+                )
 
                 self.consecutive_failures[stream_key] = 0
                 self.stream_status[stream_key] = True
+                count_error = 0
 
                 if stream_key in self.last_log_time:
                     del self.last_log_time[stream_key]
@@ -596,18 +610,23 @@ class IcecastChecker:
                         skip_cooldown=True
                     )
             else:
-                self.consecutive_failures[stream_key] += 1
+                count_error = prev_count_error + 1
+                self.consecutive_failures[stream_key] = count_error
                 self.stream_status[stream_key] = False
                 all_streams_ok = False
 
-                self.logger.debug(f"Stream '{stream_name}' offline. Consecutive failures: {self.consecutive_failures[stream_key]}")
+                self.logger.debug(
+                    f"Stream '{stream_name}' offline. "
+                    f"Consecutive failures (count_error): {count_error}"
+                )
 
-                if self.should_log_failure(stream_key, self.consecutive_failures[stream_key]):
-                    self.logger.warning(f"Stream '{stream_name}' unavailable (attempt {self.consecutive_failures[stream_key]})")
+                if self.should_log_failure(stream_key, count_error):
+                    self.logger.warning(
+                        f"Stream '{stream_name}' unavailable (attempt {count_error})"
+                    )
                     self.last_log_time[stream_key] = time.time()
 
-                was_online_or_new = previous_run_status.get(stream_key) != "offline"
-                if was_online_or_new:
+                if count_error == 3:
                     auth_config = icecast_config.get('auth', {})
                     auth_enabled = auth_config.get('enabled', False)
                     
@@ -619,11 +638,19 @@ class IcecastChecker:
                     message += f"**RESTART STREAMING**"
 
                     self.send_telegram_notification(message, stream_key)
+                    self.logger.info(
+                        f"Offline notification sent for stream '{stream_name}' "
+                        f"after {count_error} consecutive errors"
+                    )
                     self.send_email_notification(
                         subject=f"Stream '{stream_name}' down",
                         message=message,
                         stream_key=stream_key
                     )
+
+            # сохранить текущее значение счётчика ошибок в статусе для следующего запуска
+            stream_info['count_error'] = count_error if stream_info.get('status') == 'offline' else 0
+            streams_data.append(stream_info)
 
         now_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         if all_streams_ok:
