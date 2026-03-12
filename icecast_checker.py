@@ -500,10 +500,12 @@ class IcecastChecker:
                 key = f"{mp}_{name}"
                 st = s.get('status')
                 count_error = s.get('count_error', 0)
+                first_offline_time = s.get('first_offline_time')
                 if st in ('online', 'offline'):
                     result[key] = {
                         'status': st,
-                        'count_error': count_error
+                        'count_error': count_error,
+                        'first_offline_time': first_offline_time,
                     }
             return result
         except Exception as e:
@@ -534,9 +536,11 @@ class IcecastChecker:
             if isinstance(prev_state, dict):
                 prev_status = prev_state.get('status')
                 prev_count_error = int(prev_state.get('count_error', 0) or 0)
+                prev_first_offline_time = prev_state.get('first_offline_time')
             else:
                 prev_status = prev_state
                 prev_count_error = 0
+                prev_first_offline_time = None
 
             if stream_key not in self.consecutive_failures:
                 self.consecutive_failures[stream_key] = 0
@@ -544,6 +548,8 @@ class IcecastChecker:
                 self.stream_status[stream_key] = True
             
             stream_info = self.check_icecast_stream(stream_config)
+
+            now_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
             if stream_info.get('status') == 'online':
                 was_offline = prev_count_error >= 3
@@ -561,12 +567,26 @@ class IcecastChecker:
                     del self.last_log_time[stream_key]
 
                 if was_offline:
+                    downtime_info = ""
+                    if prev_first_offline_time:
+                        try:
+                            start_dt = datetime.strptime(prev_first_offline_time, "%Y-%m-%d %H:%M:%S")
+                            end_dt = datetime.strptime(now_str, "%Y-%m-%d %H:%M:%S")
+                            minutes_down = int((end_dt - start_dt).total_seconds() // 60)
+                            downtime_info = (
+                                f"\n\nDown since: {prev_first_offline_time}\n"
+                                f"Total downtime: {minutes_down} min"
+                            )
+                        except Exception:
+                            downtime_info = f"\n\nDown since: {prev_first_offline_time}"
+
                     self.logger.info(f"Sending recovery notification for stream '{stream_name}'")
                     message = f"✅ <b>RECOVERY</b>\n\n"
                     message += f"Stream '{stream_name}' is back online.\n"
                     message += f"Server: {icecast_config['host']}\n"
                     message += f"Mount point: {mount_point}\n"
                     message += f"Listeners: {stream_info.get('listeners', 0)}"
+                    message += downtime_info
 
                     self.send_telegram_notification(message, stream_key, skip_cooldown=True)
                     self.send_email_notification(
@@ -576,6 +596,12 @@ class IcecastChecker:
                         skip_cooldown=True
                     )
             else:
+                # первый оффлайн в серии — запоминаем время начала простоя
+                if prev_count_error == 0:
+                    first_offline_time = now_str
+                else:
+                    first_offline_time = prev_first_offline_time or now_str
+
                 count_error = prev_count_error + 1
                 self.consecutive_failures[stream_key] = count_error
                 self.stream_status[stream_key] = False
@@ -600,7 +626,10 @@ class IcecastChecker:
                     message += f"Stream '{stream_name}' is down.\n"
                     message += f"Server: {icecast_config['host']}\n"
                     message += f"Protocol: {protocol.upper()}\n"
-                    message += f"Mount point: {mount_point}\n\n"
+                    message += f"Mount point: {mount_point}\n"
+                    if first_offline_time:
+                        message += f"Down since: {first_offline_time}\n"
+                    message += "\n"
                     message += f"**RESTART STREAMING**"
 
                     self.send_telegram_notification(message, stream_key)
@@ -614,8 +643,13 @@ class IcecastChecker:
                         stream_key=stream_key
                     )
 
-            # сохранить текущее значение счётчика ошибок в статусе для следующего запуска
-            stream_info['count_error'] = count_error if stream_info.get('status') == 'offline' else 0
+            # сохранить текущее значение счётчика ошибок и время начала простоя
+            if stream_info.get('status') == 'offline':
+                stream_info['count_error'] = count_error
+                stream_info['first_offline_time'] = first_offline_time
+            else:
+                stream_info['count_error'] = 0
+                stream_info['first_offline_time'] = None
             streams_data.append(stream_info)
 
         now_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
