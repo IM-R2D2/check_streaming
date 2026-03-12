@@ -13,7 +13,7 @@ import smtplib
 import requests
 from datetime import datetime
 from pathlib import Path
-from email.mime_text import MIMEText
+from email.mime.text import MIMEText
 
 from logging_utils import setup_logging_from_config
 
