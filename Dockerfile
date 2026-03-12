@@ -7,7 +7,7 @@ COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
 # Копируем скрипты и README
-COPY icecast_checker.py custom_checker.py global-checker.py README.md ./
+COPY icecast_checker.py custom_checker.py global-checker.py logging_utils.py README.md ./
 
 # Опционально: копии примеров конфигов (для удобства внутри контейнера)
 COPY config_icecast_example.json config_custom_example.json ./
