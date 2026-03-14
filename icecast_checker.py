@@ -484,6 +484,62 @@ class IcecastChecker:
         except Exception as e:
             self.logger.error(f"Failed to write status JSON: {e}")
 
+    def _write_recovery_state_for_stream(self, mount_point, stream_name):
+        """Обновляет в status-online.json состояние потока на 'recovered' до отправки
+        RECOVERY, чтобы другой процесс (например healthcheck) не отправил дубликат.
+        """
+        status_config = self.config.get('status_json', {})
+        if not status_config.get('enabled', False):
+            return
+        file_path = status_config.get('file_path', 'status-online.json')
+        try:
+            if not os.path.exists(file_path):
+                return
+            with open(file_path, 'r', encoding='utf-8') as f:
+                data = json.load(f)
+            streams = data.get('streams', [])
+            for s in streams:
+                if s.get('mount_point') == mount_point and s.get('name') == stream_name:
+                    s['status'] = 'online'
+                    s['count_error'] = 0
+                    s['first_offline_time'] = None
+                    break
+            else:
+                return
+            with open(file_path, 'w', encoding='utf-8') as f:
+                json.dump(data, f, ensure_ascii=False, indent=2)
+            self.logger.debug(f"Recovery state written for {mount_point}_{stream_name}")
+        except Exception as e:
+            self.logger.warning(f"Could not write recovery state to {file_path}: {e}")
+
+    def _write_stream_offline_state(self, mount_point, stream_name, count_error, first_offline_time):
+        """Обновляет в status-online.json состояние потока (offline, count_error) до отправки
+        ALERT, чтобы другой процесс не отправил дубликат при одновременном запуске.
+        """
+        status_config = self.config.get('status_json', {})
+        if not status_config.get('enabled', False):
+            return
+        file_path = status_config.get('file_path', 'status-online.json')
+        try:
+            if not os.path.exists(file_path):
+                return
+            with open(file_path, 'r', encoding='utf-8') as f:
+                data = json.load(f)
+            streams = data.get('streams', [])
+            for s in streams:
+                if s.get('mount_point') == mount_point and s.get('name') == stream_name:
+                    s['status'] = 'offline'
+                    s['count_error'] = count_error
+                    s['first_offline_time'] = first_offline_time
+                    break
+            else:
+                return
+            with open(file_path, 'w', encoding='utf-8') as f:
+                json.dump(data, f, ensure_ascii=False, indent=2)
+            self.logger.debug(f"Offline state written for {mount_point}_{stream_name}")
+        except Exception as e:
+            self.logger.warning(f"Could not write offline state to {file_path}: {e}")
+
     def _load_previous_status(self):
         status_config = self.config.get('status_json', {})
         file_path = status_config.get('file_path', 'status-online.json')
@@ -581,6 +637,9 @@ class IcecastChecker:
                             downtime_info = f"\n\nDown since: {prev_first_offline_time}"
 
                     self.logger.info(f"Sending recovery notification for stream '{stream_name}'")
+                    # Сначала обновить файл статуса, чтобы второй процесс (напр. healthcheck)
+                    # при чтении увидел count_error=0 и не отправил дубликат RECOVERY.
+                    self._write_recovery_state_for_stream(mount_point, stream_name)
                     message = f"✅ <b>RECOVERY</b>\n\n"
                     message += f"Stream '{stream_name}' is back online.\n"
                     message += f"Server: {icecast_config['host']}\n"
@@ -619,6 +678,8 @@ class IcecastChecker:
                     self.last_log_time[stream_key] = time.time()
 
                 if count_error == 3:
+                    # Сначала обновить файл статуса, чтобы второй процесс не отправил дубликат ALERT.
+                    self._write_stream_offline_state(mount_point, stream_name, count_error, first_offline_time)
                     auth_config = icecast_config.get('auth', {})
                     auth_enabled = auth_config.get('enabled', False)
                     
