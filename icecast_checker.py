@@ -631,10 +631,11 @@ class IcecastChecker:
                             minutes_down = int((end_dt - start_dt).total_seconds() // 60)
                             downtime_info = (
                                 f"\n\nDown since: {prev_first_offline_time}\n"
+                                f"Time's recovery: {now_str}\n"
                                 f"Total downtime: {minutes_down} min"
                             )
                         except Exception:
-                            downtime_info = f"\n\nDown since: {prev_first_offline_time}"
+                            downtime_info = f"\n\nDown since: {prev_first_offline_time}\nTime's recovery: {now_str}"
 
                     self.logger.info(f"Sending recovery notification for stream '{stream_name}'")
                     # Сначала обновить файл статуса, чтобы второй процесс (напр. healthcheck)
