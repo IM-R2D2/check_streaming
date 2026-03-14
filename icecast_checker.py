@@ -11,11 +11,15 @@ import sys
 import time
 import smtplib
 import requests
+import urllib3
 from datetime import datetime
 from pathlib import Path
 from email.mime.text import MIMEText
 
 from logging_utils import setup_logging_from_config
+
+# Подавить предупреждение при verify=False (самоподписанные сертификаты)
+urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
 
 class IcecastChecker:
@@ -48,7 +52,7 @@ class IcecastChecker:
     def _setup_logging(self):
         self.logger = setup_logging_from_config(self.config, logger_name="icecast_checker")
     
-    def test_endpoint_availability(self, url, headers, auth_enabled, auth_username, auth_password, timeout):
+    def test_endpoint_availability(self, url, headers, auth_enabled, auth_username, auth_password, timeout, verify_ssl=True):
         try:
             import requests
 
@@ -57,7 +61,7 @@ class IcecastChecker:
                 auth = (auth_username, auth_password)
 
             self.logger.debug(f"Testing endpoint: {url}")
-            response = requests.get(url, headers=headers, auth=auth, timeout=5, verify=False)
+            response = requests.get(url, headers=headers, auth=auth, timeout=5, verify=verify_ssl)
             self.logger.debug(f"Endpoint {url} responded with code: {response.status_code}")
             return response.status_code == 200
 
@@ -114,6 +118,7 @@ class IcecastChecker:
         stream_name = stream_config.get('name', mount_point)
         timeout = icecast_config.get('timeout', 15)
         use_https = icecast_config.get('use_https', False)
+        verify_ssl = icecast_config.get('verify_ssl', True)
         user_agent = icecast_config.get('user_agent', 'IcecastChecker/1.0')
         preferred_endpoint = icecast_config.get('endpoint', None)
         endpoint_only = icecast_config.get('endpoint_only', False)
@@ -172,7 +177,7 @@ class IcecastChecker:
         for endpoint in possible_endpoints:
             test_url = f"{base_url}{endpoint}"
             self.logger.debug(f"Checking endpoint: {endpoint}")
-            if self.test_endpoint_availability(test_url, headers, auth_enabled, auth_username, auth_password, timeout):
+            if self.test_endpoint_availability(test_url, headers, auth_enabled, auth_username, auth_password, timeout, verify_ssl):
                 stats_url = test_url
                 self.logger.debug(f"Available endpoint found: {endpoint}")
                 break
@@ -192,7 +197,7 @@ class IcecastChecker:
             elif auth_enabled:
                 self.logger.warning("Auth enabled but username or password not set")
             
-            response = requests.get(stats_url, timeout=timeout, headers=headers, auth=auth)
+            response = requests.get(stats_url, timeout=timeout, headers=headers, auth=auth, verify=verify_ssl)
             response.raise_for_status()
 
             if '/status-json.xsl' in stats_url or '/status.xsl' in stats_url:
@@ -568,7 +573,11 @@ class IcecastChecker:
             self.logger.debug(f"Could not load previous status from {file_path}: {e}")
             return result
 
-    def run_check(self):
+    def run_check(self, one_shot_healthcheck=False):
+        """
+        one_shot_healthcheck: при True (режим --once для Docker healthcheck) возвращаем True,
+        если хотя бы один поток онлайн. Иначе контейнер будет unhealthy при отсутствии части маунтов.
+        """
         self.logger.info("Running Icecast stream check")
 
         enabled_streams = self.get_enabled_streams()
@@ -727,9 +736,13 @@ class IcecastChecker:
             self.last_error_time = now_str
 
         self.write_status_json(streams_data)
-        
+
+        if one_shot_healthcheck and not all_streams_ok:
+            # Для healthcheck: успех, если хотя бы один поток онлайн (часть маунтов может отсутствовать)
+            at_least_one_online = any(s.get("status") == "online" for s in streams_data)
+            return at_least_one_online
         return all_streams_ok
-    
+
     def run_continuous(self):
         check_interval = self.config.get('icecast', {}).get('check_interval', 60)
         self.logger.info(f"Starting continuous check every {check_interval}s")

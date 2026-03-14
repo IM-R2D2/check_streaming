@@ -7,6 +7,7 @@
     "timeout": 15,
     "check_interval": 60,
     "use_https": false,
+    "verify_ssl": true,
     "user_agent": "IcecastChecker/1.0",
     "endpoint": "/admin/stats",
     "endpoint_only": false,

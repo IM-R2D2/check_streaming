@@ -54,8 +54,11 @@ fi
 echo '{}' > "$STATUS_FILE"
 echo "Status file reset: $STATUS_FILE"
 
-echo "Building and starting container with $COMPOSE_CMD..."
-$COMPOSE_CMD up -d --build
+echo "Building image without cache..."
+$COMPOSE_CMD build --no-cache
+
+echo "Starting container..."
+$COMPOSE_CMD up -d --force-recreate
 
 echo "=== Deployment complete ==="
 echo "Check service logs in directory: $LOGS_DIR"

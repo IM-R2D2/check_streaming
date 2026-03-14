@@ -6,6 +6,9 @@ Global checker: reads config.json and runs the appropriate checker based on type
   - type "custom"  -> CustomChecker (custom_checker.py)
 """
 
+import urllib3
+urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
+
 import json
 import os
 import sys
@@ -41,7 +44,7 @@ def main():
         checker = IcecastChecker()
 
     if once:
-        success = checker.run_check()
+        success = checker.run_check(one_shot_healthcheck=True)
         sys.exit(0 if success else 1)
     else:
         checker.run_continuous()
