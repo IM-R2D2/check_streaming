@@ -629,10 +629,16 @@ class IcecastChecker:
                             start_dt = datetime.strptime(prev_first_offline_time, "%Y-%m-%d %H:%M:%S")
                             end_dt = datetime.strptime(now_str, "%Y-%m-%d %H:%M:%S")
                             minutes_down = int((end_dt - start_dt).total_seconds() // 60)
+                            if minutes_down >= 60:
+                                hours = minutes_down // 60
+                                mins = minutes_down % 60
+                                downtime_str = f"{hours} h {mins} min" if mins else f"{hours} h"
+                            else:
+                                downtime_str = f"{minutes_down} min"
                             downtime_info = (
                                 f"\n\nDown since: {prev_first_offline_time}\n"
                                 f"Time's recovery: {now_str}\n"
-                                f"Total downtime: {minutes_down} min"
+                                f"Total downtime: {downtime_str}"
                             )
                         except Exception:
                             downtime_info = f"\n\nDown since: {prev_first_offline_time}\nTime's recovery: {now_str}"
